@@ -40,6 +40,89 @@ pipeline can be exercised without network access. **Anything measured on
 synthetic data is a smoke test, not a result** — the scripts say so loudly in
 their output.
 
+## Running it on Tickstory data
+
+Point every layer at a directory of exports instead of yfinance:
+
+```bash
+python run_all.py --source tickstory --data-dir ./tickstory
+```
+
+Each script takes the same flags, so you can also run them one at a time. The
+reader sniffs each file rather than assuming a template, and handles the shapes
+Tickstory actually writes:
+
+| export | looks like |
+| --- | --- |
+| tick csv | `2015.01.02 00:00:00.123,1.20998,1.21024,0.75,1.50` |
+| M1 csv (MT4) | `2015.01.02,00:00,1.21000,1.21010,1.20990,1.21005,42` |
+| MT5 csv | tab-separated with a `<DATE>	<TIME>	<OPEN>...` header |
+| generic | `2015-01-02 00:00:00,1.21000,...` or `20150102 000000;...` |
+| MT4 `.hst` | binary, version 400 or 401 |
+
+`.gz` and `.zip` are read in place. Symbols come from filenames, with the usual
+noise stripped — `EURUSD_M1_2015-2025.csv` and `GBPJPY-M15.txt.gz` become
+`EURUSD` and `GBPJPY`. Daily bars are cached under `data/tickstory/`, so the
+slow parse happens once.
+
+**Export M1 bars, not raw ticks.** This is a daily-bar system, so ticks buy you
+nothing and a decade of one pair is hundreds of millions of rows. Tick files do
+work — they are streamed in chunks and aggregated as they go, so memory stays
+flat — but M1 gets you the same daily bars in seconds.
+
+### Three things to get right
+
+**1. Where the day is cut.** Tickstory stamps rows in whatever offset you chose
+at export (Dukascopy source data is UTC), and a daily bar has to be cut
+somewhere. The default is `--session-close-utc 22` — 17:00 New York, the FX
+convention. Cutting at UTC midnight instead (`--session-close-utc 0`) splits the
+Sunday-evening open into a stub bar of its own and shifts every daily close by
+two hours, which moves every indicator that reads Close. If you exported with a
+broker offset already applied (say GMT+2), pass the hour in *that* clock.
+
+**2. Costs.** The built-in table is equity-shaped; FX symbols fall through to a
+spread estimate inferred from the symbol (1bp for majors, 2bp for crosses,
+2.5bp for metals, one way). Those are placeholders. Use your own:
+
+```bash
+echo "symbol,bps
+EURUSD,0.6
+GBPJPY,2.4
+XAUUSD,3.0" > costs.csv
+python run_all.py --source tickstory --data-dir ./tickstory --costs costs.csv
+```
+
+**3. Volume is tick volume.** Tickstory reports tick counts, not traded size.
+The six volume strategies will run on it and it is a reasonable activity proxy
+in FX, but it is not the quantity the equity side of the universe reports, so
+volume-family results are not comparable across the two sources. If your export
+has no volume column at all, the reader counts ticks per day and says so.
+
+### What this does not model for FX
+
+**Swap / rollover.** Holding an FX position overnight earns or pays the interest
+differential, every night. Several of these families hold for weeks, so on a
+carry pair that is not a rounding error — it can be the whole result, in either
+direction. The cost model charges spread on turnover and nothing else, so an FX
+run here measures the price signal only.
+
+**Overlapping legs.** Layer 4 ranks assets against each other, which assumes the
+cross-section is made of separable things. EURUSD, EURJPY and GBPJPY share
+currency legs, so a long-top-third / short-bottom-third book over FX pairs can
+end up concentrated in one currency rather than diversified. It still runs; read
+the result as currency momentum with that caveat, not as the equity-style
+cross-section the layer was written for.
+
+**Session count.** Sharpe is annualised at 252 (`ANNUALIZATION` in
+`qea/config.py`) and FX runs ~260 sessions a year, so FX Sharpes here are
+understated by about 1.5%. `--train-bars` and `--test-bars` are counts of bars,
+not calendar time, for the same reason.
+
+`python tests/test_tickstory.py` writes a file in every supported format from
+one known set of bars and checks they all roll up to the same daily OHLCV,
+covers both session cuts, both `.hst` versions, compression, symbol naming, and
+finishes by running all 348 configs over the result.
+
 ## Layer 1 — data and the strategy library
 
 Daily OHLCV from yfinance, `auto_adjust=True`, 2010-01-01 to 2025-01-01, for 29
@@ -156,8 +239,9 @@ regime check (how much of the result rests on the single best year).
 
 ## Network note
 
-The data layer needs `query1.finance.yahoo.com` and `fc.yahoo.com`. Both are
+The yfinance path needs `query1.finance.yahoo.com` and `fc.yahoo.com`. Both are
 blocked by the egress policy of the sandbox this repo was authored in, so no
-real-data run was performed here — the pipeline was validated with
-`--synthetic`. Run the scripts on a machine with normal network access to get
-real results.
+real-data run was performed here — the pipeline was validated with `--synthetic`
+and against generated files in each Tickstory format. Run the scripts on a
+machine with normal network access for the yfinance universe. The Tickstory path
+reads local files and needs no network at all.

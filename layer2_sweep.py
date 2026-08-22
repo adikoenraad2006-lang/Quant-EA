@@ -17,9 +17,8 @@ import time
 import numpy as np
 import pandas as pd
 
-from qea.config import (END, FILTERS, MIN_BARS, RESULTS_DIR, START, TEST_BARS,
-                        TRAIN_BARS, UNIVERSE)
-from qea.data import load_dataset
+from qea.cli import add_data_args, load_from_args
+from qea.config import FILTERS, RESULTS_DIR, TEST_BARS, TRAIN_BARS
 from qea.strategies import CATEGORIES, build_configs
 from qea.backtest import buy_and_hold, run_backtest
 
@@ -148,21 +147,16 @@ def funnel_report(df: pd.DataFrame, flags: pd.DataFrame, bench: pd.DataFrame) ->
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--start", default=START)
-    ap.add_argument("--end", default=END)
-    ap.add_argument("--min-bars", type=int, default=MIN_BARS)
+    ap = add_data_args(argparse.ArgumentParser(description=__doc__))
     ap.add_argument("--train-bars", type=int, default=TRAIN_BARS)
     ap.add_argument("--test-bars", type=int, default=TEST_BARS)
-    ap.add_argument("--assets", nargs="*", default=UNIVERSE)
-    ap.add_argument("--synthetic", action="store_true")
     args = ap.parse_args()
 
     os.makedirs(RESULTS_DIR, exist_ok=True)
     print("=" * 78)
     print("LAYER 2 -- SWEEP")
     print("=" * 78)
-    prices = load_dataset(args.synthetic, args.assets, args.start, args.end, args.min_bars)
+    prices = load_from_args(args)
     if not prices:
         raise SystemExit("no price data — cannot sweep")
 

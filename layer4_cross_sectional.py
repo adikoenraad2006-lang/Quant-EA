@@ -17,10 +17,10 @@ import os
 import numpy as np
 import pandas as pd
 
-from qea.config import (END, MIN_BARS, RESULTS_DIR, START, TEST_BARS, TRAIN_BARS,
-                        UNIVERSE, XS_LOOKBACKS, XS_REBALANCE, cost_bps)
+from qea.cli import add_data_args, load_from_args
+from qea.config import (RESULTS_DIR, TEST_BARS, TRAIN_BARS, XS_LOOKBACKS,
+                        XS_REBALANCE, cost_bps)
 from qea.backtest import annual_return, max_drawdown, sharpe, walk_forward
-from qea.data import load_dataset
 
 SWEEP_CSV = os.path.join(RESULTS_DIR, "sweep_results.csv")
 XS_CSV = os.path.join(RESULTS_DIR, "cross_sectional_momentum.csv")
@@ -156,23 +156,18 @@ def single_asset_momentum(sweep_path: str) -> pd.DataFrame:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--start", default=START)
-    ap.add_argument("--end", default=END)
-    ap.add_argument("--min-bars", type=int, default=MIN_BARS)
+    ap = add_data_args(argparse.ArgumentParser(description=__doc__))
     ap.add_argument("--train-bars", type=int, default=TRAIN_BARS)
     ap.add_argument("--test-bars", type=int, default=TEST_BARS)
     ap.add_argument("--rebalance", type=int, default=XS_REBALANCE)
     ap.add_argument("--sweep", default=SWEEP_CSV)
-    ap.add_argument("--synthetic", action="store_true")
     args = ap.parse_args()
 
     os.makedirs(RESULTS_DIR, exist_ok=True)
     print("=" * 78)
     print("LAYER 4 -- CROSS-SECTIONAL MOMENTUM")
     print("=" * 78)
-    prices = load_dataset(args.synthetic, UNIVERSE, args.start, args.end, args.min_bars,
-                          verbose=False)
+    prices = load_from_args(args, verbose=False)
     if not prices:
         raise SystemExit("no price data — cannot run the cross-sectional test")
 

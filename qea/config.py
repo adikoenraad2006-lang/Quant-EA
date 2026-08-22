@@ -17,8 +17,16 @@ LARGE_CAPS = ["AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL", "META", "JPM"]
 
 UNIVERSE = INDEX_ETFS + SECTOR_ETFS + MACRO_ETFS + CRYPTO + LARGE_CAPS
 
-CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
-RESULTS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "results")
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CACHE_DIR = os.path.join(_ROOT, "data")
+RESULTS_DIR = os.path.join(_ROOT, "results")
+TICKSTORY_DIR = os.path.join(_ROOT, "tickstory")
+
+# ---------------------------------------------------------------- tickstory
+# Tickstory exports are timestamped in whatever offset you chose at export time
+# (Dukascopy source data is UTC).  Daily bars are cut at this hour of that clock:
+# 22 == 17:00 New York, the standard FX daily close.  0 gives plain UTC days.
+SESSION_CLOSE_HOUR = 22
 
 # ---------------------------------------------------------------- costs
 # Round-trip cost is charged on turnover: cost_t = |pos_t - pos_{t-1}| * COST_BPS/1e4.
@@ -36,8 +44,66 @@ COST_BPS = {
     **{t: 20.0 for t in CRYPTO},           # wide spreads + exchange fees
 }
 
+# Spread-based one-way estimates for the instruments Tickstory carries, as a
+# fraction of notional.  A 1-pip EURUSD spread on a 1.10 price is ~0.9bp.
+FX_MAJOR_BPS = 1.0     # EURUSD, USDJPY, GBPUSD, ...
+FX_CROSS_BPS = 2.0     # EURGBP, GBPJPY, AUDNZD, ...
+METAL_BPS = 2.5        # XAUUSD, XAGUSD
+INDEX_CFD_BPS = 2.0    # US30, GER40, NAS100, ...
+
+CURRENCIES = {"USD", "EUR", "GBP", "JPY", "CHF", "AUD", "NZD", "CAD", "SEK",
+              "NOK", "DKK", "SGD", "HKD", "MXN", "ZAR", "TRY", "PLN", "HUF",
+              "CZK", "CNH", "RUB"}
+METALS = {"XAU", "XAG", "XPT", "XPD"}
+
+_COST_OVERRIDES: dict[str, float] = {}
+
+
+def set_cost_overrides(mapping: dict) -> None:
+    """Point the cost model at your own per-symbol numbers (bps, one way)."""
+    _COST_OVERRIDES.update({str(k).upper(): float(v) for k, v in mapping.items()})
+
+
+def load_cost_overrides(path: str) -> dict:
+    """Read a two-column `symbol,bps` csv and install it."""
+    import csv
+    out = {}
+    with open(path, newline="") as fh:
+        for row in csv.reader(fh):
+            if len(row) < 2 or not row[0].strip():
+                continue
+            try:
+                out[row[0].strip().upper()] = float(row[1])
+            except ValueError:
+                continue        # header line
+    set_cost_overrides(out)
+    return out
+
+
+def _guess_fx_cost(symbol: str) -> float | None:
+    """Infer a cost from the shape of an FX / metal / index symbol."""
+    s = symbol.upper()
+    if len(s) == 6:
+        base, quote = s[:3], s[3:]
+        if base in METALS and quote in CURRENCIES:
+            return METAL_BPS
+        if base in CURRENCIES and quote in CURRENCIES:
+            return FX_MAJOR_BPS if "USD" in (base, quote) else FX_CROSS_BPS
+    if s in {"US30", "US500", "USTEC", "NAS100", "SPX500", "GER40", "GER30",
+             "UK100", "JP225", "FRA40", "AUS200", "EU50", "HK50"}:
+        return INDEX_CFD_BPS
+    return None
+
+
 def cost_bps(ticker: str) -> float:
-    return COST_BPS.get(ticker, DEFAULT_COST_BPS)
+    """One-way transaction cost in basis points of notional."""
+    key = ticker.upper()
+    if key in _COST_OVERRIDES:
+        return _COST_OVERRIDES[key]
+    if ticker in COST_BPS:
+        return COST_BPS[ticker]
+    guess = _guess_fx_cost(key)
+    return guess if guess is not None else DEFAULT_COST_BPS
 
 # ---------------------------------------------------------------- walk-forward
 # The first TRAIN_BARS of every asset are the in-sample block.  Everything after

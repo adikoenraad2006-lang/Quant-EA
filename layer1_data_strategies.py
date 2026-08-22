@@ -16,8 +16,7 @@ import collections
 import numpy as np
 import pandas as pd
 
-from qea.config import END, MIN_BARS, START, UNIVERSE
-from qea.data import load_dataset
+from qea.cli import add_data_args, load_from_args
 from qea.strategies import CATEGORIES, REGISTRY, build_configs
 
 
@@ -48,20 +47,12 @@ def sanity_check(prices: dict[str, pd.DataFrame], configs, n: int = 25) -> None:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--start", default=START)
-    ap.add_argument("--end", default=END)
-    ap.add_argument("--min-bars", type=int, default=MIN_BARS)
-    ap.add_argument("--no-cache", action="store_true")
-    ap.add_argument("--synthetic", action="store_true",
-                    help="random-walk prices, for smoke-testing the pipeline offline")
-    args = ap.parse_args()
+    args = add_data_args(argparse.ArgumentParser(description=__doc__)).parse_args()
 
     print("=" * 78)
     print("LAYER 1 -- DATA")
     print("=" * 78)
-    prices = load_dataset(args.synthetic, UNIVERSE, args.start, args.end,
-                          args.min_bars, use_cache=not args.no_cache)
+    prices = load_from_args(args)
 
     print("\n" + "=" * 78)
     print("LAYER 1 -- STRATEGY LIBRARY")

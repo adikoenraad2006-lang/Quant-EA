@@ -16,10 +16,9 @@ import os
 import numpy as np
 import pandas as pd
 
-from qea.config import (BOOTSTRAP_N, END, FRAGILE_DD, MIN_BARS, RESULTS_DIR,
-                        START, TEST_BARS, TRAIN_BARS, UNIVERSE)
+from qea.cli import add_data_args, load_from_args
+from qea.config import (BOOTSTRAP_N, FRAGILE_DD, RESULTS_DIR, TEST_BARS, TRAIN_BARS)
 from qea.backtest import max_drawdown, run_backtest, sharpe
-from qea.data import load_dataset
 from qea.strategies import Config, REGISTRY
 
 SWEEP_CSV = os.path.join(RESULTS_DIR, "sweep_results.csv")
@@ -162,16 +161,13 @@ def print_bootstrap(boot: pd.DataFrame, method: str) -> None:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser()
+    ap = add_data_args(argparse.ArgumentParser(description=__doc__))
     ap.add_argument("--sweep", default=SWEEP_CSV)
     ap.add_argument("--top", type=int, default=25, help="survivors to stress test")
     ap.add_argument("--n-boot", type=int, default=BOOTSTRAP_N)
     ap.add_argument("--method", choices=["resample", "shuffle"], default="resample")
     ap.add_argument("--train-bars", type=int, default=TRAIN_BARS)
     ap.add_argument("--test-bars", type=int, default=TEST_BARS)
-    ap.add_argument("--start", default=START)
-    ap.add_argument("--end", default=END)
-    ap.add_argument("--synthetic", action="store_true")
     args = ap.parse_args()
 
     if not os.path.exists(args.sweep):
@@ -188,8 +184,8 @@ def main() -> None:
     print_sensitivity(sens)
 
     survivors = sweep[sweep["survived"]].sort_values("oos_sharpe", ascending=False).head(args.top)
-    prices = load_dataset(args.synthetic, sorted(survivors["asset"].unique()) or UNIVERSE,
-                          args.start, args.end, MIN_BARS, verbose=False)
+    prices = load_from_args(args, tickers=sorted(survivors["asset"].unique()) or None,
+                            verbose=False)
     boot = stress_survivors(survivors, prices, args.n_boot, args.method,
                             args.train_bars, args.test_bars)
     boot.to_csv(BOOTSTRAP_CSV, index=False)
