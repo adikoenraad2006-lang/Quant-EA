@@ -1,0 +1,26 @@
+[Unit]
+Description=Tradovate copy trader
+Wants=network-online.target
+After=network-online.target time-sync.target
+
+[Service]
+Type=simple
+User=copytrader
+Group=copytrader
+WorkingDirectory=/opt/copytrader
+EnvironmentFile=/etc/copytrader/copytrader.env
+ExecStart=/opt/copytrader/venv/bin/python -m copytrader run -c /etc/copytrader/config.toml
+Restart=always
+RestartSec=5
+# Stop hammering if the config is broken (exit code 2) - fix it, then start again.
+RestartPreventExitStatus=2
+
+# Hardening: the service can only write its own state directory.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/copytrader
+
+[Install]
+WantedBy=multi-user.target

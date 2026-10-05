@@ -1,0 +1,49 @@
+# Copy trader configuration. On the server this lives at /etc/copytrader/config.toml
+# (owner copytrader, mode 600). Any value written as "env:NAME" is read from the
+# environment variable NAME instead (see deploy/copytrader.env.example).
+
+environment = "demo"          # "demo" (simulated) or "live" (real money)
+dry_run = true                # true = log what would be sent, send nothing
+adopt_on_start = false        # true = immediately mirror positions the leader already holds at start-up
+reconcile_interval = 5        # seconds between safety-net passes (events trigger passes instantly too)
+order_timeout = 15            # seconds to wait for an order to show up in the position before re-checking
+max_orders_per_minute = 10    # per follower; over this the follower is halted until restart
+pause_file = "/var/lib/copytrader/PAUSE"   # while this file exists, no orders are sent
+
+[telegram]                    # optional alerts; leave empty to only log
+bot_token = ""
+chat_id = ""
+
+# One section per Tradovate login. Several accounts under one login need only one section.
+# cid / sec come from Tradovate: Settings -> API Access -> Generate API Key.
+[logins.main]
+username = "your-tradovate-username"
+password = "env:TRADOVATE_MAIN_PASSWORD"
+cid = 0
+sec = "env:TRADOVATE_MAIN_SEC"
+app_id = "copytrader"
+app_version = "1.0"
+# device_id = ""              # optional; a stable one is derived from the login name
+
+# A second login, if your follower account lives under a different username.
+# [logins.second]
+# username = "other-username"
+# password = "env:TRADOVATE_SECOND_PASSWORD"
+# cid = 0
+# sec = "env:TRADOVATE_SECOND_SEC"
+
+[leader]
+login = "main"
+account = "DEMO1234567"       # account name exactly as `python -m copytrader check` prints it
+
+[[followers]]
+login = "main"
+account = "DEMO7654321"
+multiplier = 1.0              # follower qty = leader qty x multiplier, truncated toward zero
+max_position = 2              # hard cap on the follower's net position, in contracts
+
+# [[followers]]
+# login = "second"
+# account = "DEMO0000000"
+# multiplier = 0.5
+# max_position = 1

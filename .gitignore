@@ -6,3 +6,5 @@ data/
 .DS_Store
 results/
 tickstory/
+config.toml
+copytrader.env

@@ -245,3 +245,12 @@ real-data run was performed here — the pipeline was validated with `--syntheti
 and against generated files in each Tickstory format. Run the scripts on a
 machine with normal network access for the yfinance universe. The Tickstory path
 reads local files and needs no network at all.
+
+## Tradovate copy trader
+
+`copytrader/` is a separate tool: a small service that mirrors one Tradovate
+account's positions onto follower accounts, built to run 24/7 on a cheap VPS
+(e.g. a Hetzner CX23). It has its own dependency (`aiohttp`) and its own tests
+(`python copytrader/tests/test_copytrader.py`). See
+[copytrader/SETUP.md](copytrader/SETUP.md) for getting a Tradovate demo, setting
+up the server, and the stage-by-stage test plan.
